@@ -1,0 +1,10 @@
+{
+  "app.name": "CV Analyzer",
+  "sidebar.dashboard": "Tableau de bord",
+  "sidebar.job": "Fiche de poste",
+  "sidebar.upload": "Upload CV",
+  "sidebar.candidates": "Candidats",
+  "sidebar.analytics": "Analytiques",
+  "sidebar.settings": "Paramètres",
+  "upload.title": "Téléchargement de CV"
+}

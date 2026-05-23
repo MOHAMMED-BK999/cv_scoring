@@ -1,0 +1,16 @@
+{
+  "name": "pfe-cv-scoring-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Workspace scripts for frontend (Vite) and backend (FastAPI)",
+  "scripts": {
+    "frontend:install": "npm --prefix frontend install",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:preview": "npm --prefix frontend run preview",
+    "backend:smoke": "PYTHONPATH=$PWD/backend $PWD/.venv/bin/python backend/tests/smoke_runner.py && PYTHONPATH=$PWD/backend $PWD/.venv/bin/python backend/tests/smoke_upload_runner.py && PYTHONPATH=$PWD/backend $PWD/.venv/bin/python backend/tests/smoke_ingestion_job_runner.py"
+  },
+  "dependencies": {
+    "firebase": "^12.13.0"
+  }
+}

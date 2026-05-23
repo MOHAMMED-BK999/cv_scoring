@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: ankane/pgvector:v0.5.1
+    container_name: cv_scoring_db
+    environment:
+      POSTGRES_DB: cv_scoring
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: cv_scoring_chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: cv_scoring_backend
+  # ... (to be uncommented later when Dockerfile is ready)
+
+volumes:
+  postgres_data:
+  chroma_data:
