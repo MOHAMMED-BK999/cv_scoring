@@ -31,5 +31,6 @@ def JsonList():
     return JSON().with_variant(JSONB, "postgresql")
 
 
-def EmbeddingVector(dimensions: int = 768):
+def EmbeddingVector(dimensions: int = 1024):
     return SQLiteVector().with_variant(Vector(dimensions), "postgresql")
+

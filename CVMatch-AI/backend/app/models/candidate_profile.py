@@ -15,5 +15,5 @@ class CandidateProfile(Base):
     total_experience_years = Column(Numeric(4, 1), nullable=True)
     raw_text = Column(Text, nullable=True)
     summary_text = Column(Text, nullable=True)
-    embedding_vector = Column(EmbeddingVector(768), nullable=True)
+    embedding_vector = Column(EmbeddingVector(1024), nullable=True)
     extracted_at = Column(DateTime(timezone=True), server_default=func.now())

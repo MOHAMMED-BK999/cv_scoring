@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.core.embedding_engine import embedding_service
+
 router = APIRouter()
 
 
@@ -7,7 +9,7 @@ router = APIRouter()
 async def health() -> dict:
     return {
         "status": "ok",
-        "ai_model": "paraphrase-multilingual-MiniLM-L12-v2"
+        "ai_model": embedding_service.model_name
     }
 
 

@@ -1,5 +1,3 @@
-import json
-import os
 import re
 from typing import Any
 
@@ -18,26 +16,6 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / denom)
 
 
-def _keywords(text: str) -> set[str]:
-    stopwords = {
-        "and",
-        "avec",
-        "dans",
-        "des",
-        "for",
-        "les",
-        "the",
-        "une",
-        "you",
-        "your",
-        "will",
-        "work",
-        "experience",
-    }
-    words = re.findall(r"[a-zA-Z][a-zA-Z+#.-]{2,}", (text or "").lower())
-    return {word for word in words if word not in stopwords}
-
-
 def _percent(value: Any) -> float:
     try:
         numeric = float(value)
@@ -47,19 +25,181 @@ def _percent(value: Any) -> float:
     return round(max(0.0, min(100.0, numeric)), 2)
 
 
-def _normalize_term(term: str) -> str:
-    return re.sub(r"\s+", " ", (term or "").strip().lower())
+def _normalize(text: str) -> str:
+    """Lowercase and strip accents for fuzzy matching."""
+    return re.sub(r"[^a-z0-9+#. ]", "", text.lower().strip())
 
 
-def _term_tokens(term: str) -> set[str]:
-    return _keywords(term)
+def _skill_matches(
+    cv_skills: list[str],
+    required: list[str],
+) -> tuple[list[str], list[str]]:
+    """Return (matched, missing) skill lists using fuzzy substring matching."""
+    if not required:
+        return [], []
+
+    cv_normalized = [_normalize(s) for s in cv_skills]
+    cv_text_blob = " ".join(cv_normalized)
+
+    matched: list[str] = []
+    missing: list[str] = []
+
+    for req in required:
+        req_norm = _normalize(req)
+        found = False
+        for cv_s in cv_normalized:
+            if req_norm in cv_s or cv_s in req_norm:
+                found = True
+                break
+        if not found and req_norm in cv_text_blob:
+            found = True
+        if found:
+            matched.append(req)
+        else:
+            missing.append(req)
+
+    return matched, missing
+
+
+def _compute_skills_score(
+    cv_profile: CVProfile,
+    required_hard_skills: list[str],
+) -> tuple[float, list[str], list[str]]:
+    """Compute a 0-100 score for hard/technical skills matching."""
+    if not required_hard_skills:
+        return 100.0, [], []
+
+    cv_skills = cv_profile.flat_skills
+    # Also check raw_text for skill keywords
+    raw_lower = (getattr(cv_profile, "raw_text", "") or "").lower()
+    summary_lower = (cv_profile.summary or "").lower()
+    combined_text = raw_lower + " " + summary_lower
+
+    matched: list[str] = []
+    missing: list[str] = []
+
+    for req in required_hard_skills:
+        req_norm = _normalize(req)
+        found = False
+        # Check in extracted skills
+        for cv_s in cv_skills:
+            cv_s_norm = _normalize(cv_s)
+            if req_norm in cv_s_norm or cv_s_norm in req_norm:
+                found = True
+                break
+        # Fallback: check in raw text
+        if not found and req_norm in combined_text:
+            found = True
+        if found:
+            matched.append(req)
+        else:
+            missing.append(req)
+
+    score = (len(matched) / len(required_hard_skills)) * 100.0
+    return round(score, 2), matched, missing
+
+
+def _compute_soft_skills_score(
+    cv_profile: CVProfile,
+    required_soft_skills: list[str],
+) -> float:
+    """Compute a 0-100 score for soft skills matching."""
+    if not required_soft_skills:
+        return 100.0
+
+    cv_skills = cv_profile.flat_skills
+    raw_lower = (getattr(cv_profile, "raw_text", "") or "").lower()
+    summary_lower = (cv_profile.summary or "").lower()
+    combined = " ".join([_normalize(s) for s in cv_skills]) + " " + raw_lower + " " + summary_lower
+
+    found_count = 0
+    for req in required_soft_skills:
+        req_norm = _normalize(req)
+        if req_norm in combined:
+            found_count += 1
+
+    return round((found_count / len(required_soft_skills)) * 100.0, 2)
+
+
+def _compute_experience_score(
+    cv_profile: CVProfile,
+    min_experience_years: float,
+) -> float:
+    """Compute a 0-100 score for experience match."""
+    candidate_years = float(getattr(cv_profile, "total_experience_years", 0) or 0)
+
+    if min_experience_years <= 0:
+        # No requirement: give full credit if candidate has any experience
+        if candidate_years > 0:
+            return 100.0
+        # Even with no parsed years, having experience entries counts
+        if cv_profile.experience:
+            return 75.0
+        return 50.0
+
+    ratio = candidate_years / min_experience_years
+    if ratio >= 1.0:
+        return 100.0
+    elif ratio >= 0.75:
+        return 85.0
+    elif ratio >= 0.5:
+        return 65.0
+    elif ratio > 0:
+        return 40.0
+    else:
+        # No years parsed but has experience entries
+        if cv_profile.experience:
+            return 50.0
+        return 0.0
+
+
+def _compute_education_score(
+    cv_profile: CVProfile,
+    required_degree: str | None,
+) -> float:
+    """Compute a 0-100 score for education match."""
+    if not cv_profile.education:
+        return 0.0 if required_degree else 50.0
+
+    if not required_degree:
+        return 100.0 if cv_profile.education else 50.0
+
+    # Degree hierarchy for matching
+    degree_levels = {
+        "bac": 1, "baccalauréat": 1, "baccalaureat": 1, "high school": 1,
+        "bts": 2, "dut": 2, "deug": 2, "associate": 2,
+        "licence": 3, "bachelor": 3, "bsc": 3, "ba": 3, "license": 3,
+        "master": 4, "msc": 4, "ma": 4, "mba": 4, "maîtrise": 4, "maitrise": 4,
+        "ingénieur": 4, "ingenieur": 4, "engineer": 4,
+        "doctorat": 5, "phd": 5, "doctorate": 5, "docteur": 5,
+    }
+
+    def _get_level(text: str) -> int:
+        text_lower = text.lower()
+        best = 0
+        for keyword, level in degree_levels.items():
+            if keyword in text_lower and level > best:
+                best = level
+        return best
+
+    required_level = _get_level(required_degree)
+    candidate_level = max((_get_level(edu.degree) for edu in cv_profile.education), default=0)
+
+    if candidate_level == 0 and required_level == 0:
+        return 75.0
+    if required_level == 0:
+        return 100.0
+    if candidate_level >= required_level:
+        return 100.0
+    if candidate_level == required_level - 1:
+        return 70.0
+    if candidate_level > 0:
+        return 40.0
+    return 10.0
 
 
 class ScoringService:
-    """Notebook phase 4 scoring engine, adapted for the FastAPI upload route."""
-
-    def __init__(self) -> None:
-        self.model = os.getenv("OLLAMA_MODEL", "llama3:8b")
+    """Score candidates using cosine similarity + sub-score analysis."""
 
     async def score_candidate(
         self,
@@ -69,30 +209,101 @@ class ScoringService:
         required_hard_skills: list[str] | None = None,
         required_soft_skills: list[str] | None = None,
         min_experience_years: float = 0,
+        required_degree: str | None = None,
         cv_embedding: list[float] | None = None,
         job_embedding: list[float] | None = None,
     ) -> dict[str, Any]:
-        weights = weights or {
-            "skills": 0.40,
-            "experience": 0.30,
-            "education": 0.20,
-            "soft_skills": 0.10,
-        }
-
+        # --- Semantic similarity ---
         cv_text = self._profile_to_text(cv_profile)
         cv_vector = cv_embedding if cv_embedding is not None else get_embedding(cv_text)
         job_vector = job_embedding if job_embedding is not None else get_embedding(job_description)
         semantic_score = _percent(cosine_similarity(cv_vector, job_vector) * 100)
-        fallback = self._heuristic_scores(
-            cv_profile,
-            job_description,
-            semantic_score,
-            weights,
-            required_hard_skills or [],
-            required_soft_skills or [],
-            min_experience_years,
+
+        # --- Sub-scores ---
+        skills_score, matched_skills, missing_skills = _compute_skills_score(
+            cv_profile, required_hard_skills or []
         )
-        return fallback
+        soft_skills_score = _compute_soft_skills_score(
+            cv_profile, required_soft_skills or []
+        )
+        experience_score = _compute_experience_score(
+            cv_profile, min_experience_years
+        )
+        education_score = _compute_education_score(
+            cv_profile, required_degree
+        )
+
+        # --- Weighted global score ---
+        if weights is None:
+            weights = {
+                "skills": 0.40,
+                "experience": 0.30,
+                "education": 0.20,
+                "soft_skills": 0.10,
+            }
+
+        # Blend: 40% semantic + 60% weighted sub-scores
+        weighted_sub = (
+            weights.get("skills", 0.40) * skills_score
+            + weights.get("experience", 0.30) * experience_score
+            + weights.get("education", 0.20) * education_score
+            + weights.get("soft_skills", 0.10) * soft_skills_score
+        )
+        global_score = _percent(0.40 * semantic_score + 0.60 * weighted_sub)
+
+        # --- Recommendation ---
+        recommendation = (
+            "strong_match"
+            if global_score >= 70
+            else "maybe"
+            if global_score >= 45
+            else "not_recommended"
+        )
+
+        # --- Strengths & Gaps ---
+        strengths: list[str] = []
+        gaps: list[str] = []
+
+        if skills_score >= 75:
+            strengths.append(f"Strong technical skills match ({skills_score:.0f}%)")
+        elif skills_score < 50 and (required_hard_skills or []):
+            gaps.append(f"Missing key technical skills: {', '.join(missing_skills[:5])}")
+
+        if experience_score >= 75:
+            strengths.append(f"Experience meets requirements ({experience_score:.0f}%)")
+        elif experience_score < 50:
+            gaps.append(f"Experience below requirements ({experience_score:.0f}%)")
+
+        if education_score >= 75:
+            strengths.append(f"Education level matches ({education_score:.0f}%)")
+        elif education_score < 50:
+            gaps.append(f"Education level may not meet requirements ({education_score:.0f}%)")
+
+        if soft_skills_score >= 75:
+            strengths.append(f"Good soft skills match ({soft_skills_score:.0f}%)")
+
+        if semantic_score >= 70:
+            strengths.append(f"High semantic relevance ({semantic_score:.0f}%)")
+
+        return {
+            "global_score": global_score,
+            "semantic_score": semantic_score,
+            "skills_score": _percent(skills_score),
+            "experience_score": _percent(experience_score),
+            "education_score": _percent(education_score),
+            "soft_skills_score": _percent(soft_skills_score),
+            "matched_skills": matched_skills,
+            "missing_skills": missing_skills,
+            "strengths": strengths,
+            "gaps": gaps,
+            "overall_assessment": (
+                f"Recommendation: {recommendation}. "
+                f"Global: {global_score}% | Semantic: {semantic_score}% | "
+                f"Skills: {skills_score}% | Experience: {experience_score}% | "
+                f"Education: {education_score}% | Soft Skills: {soft_skills_score}%."
+            ),
+            "interview_recommendation": recommendation,
+        }
 
     def _profile_to_text(self, cv_profile: CVProfile) -> str:
         skills = ", ".join(cv_profile.flat_skills)
@@ -102,133 +313,14 @@ class ScoringService:
         )
         languages = ", ".join(cv_profile.languages)
         raw_text = getattr(cv_profile, "raw_text", "") or ""
-        return f"Skills: {skills}\nExperience: {experience}\nEducation: {education}\nLanguages: {languages}\nSummary: {cv_profile.summary}\nRaw CV: {raw_text}"
-
-    def _heuristic_scores(
-        self,
-        cv_profile: CVProfile,
-        job_description: str,
-        semantic_score: float,
-        weights: dict[str, float],
-        required_hard_skills: list[str],
-        required_soft_skills: list[str],
-        min_experience_years: float,
-    ) -> dict[str, Any]:
-        cv_text = self._profile_to_text(cv_profile).lower()
-        cv_terms = _keywords(cv_text) | {skill.lower() for skill in cv_profile.flat_skills}
-
-        hard_requirements = [_normalize_term(skill) for skill in required_hard_skills if _normalize_term(skill)]
-        if not hard_requirements:
-            hard_requirements = sorted(_keywords(job_description))[:25]
-
-        soft_requirements = [_normalize_term(skill) for skill in required_soft_skills if _normalize_term(skill)]
-
-        matched_scores: list[tuple[str, float]] = []
-        for skill in hard_requirements:
-            tokens = _term_tokens(skill)
-            if skill in cv_text:
-                matched_scores.append((skill, 1.0))
-            elif tokens and tokens.issubset(cv_terms):
-                matched_scores.append((skill, 0.85))
-            elif tokens:
-                overlap = len(tokens & cv_terms) / len(tokens)
-                matched_scores.append((skill, overlap * 0.6))
-            else:
-                matched_scores.append((skill, 0.0))
-
-        matched = [skill for skill, score in matched_scores if score >= 0.5]
-        missing = [skill for skill, score in matched_scores if score < 0.5]
-        skills_score = _percent((sum(score for _, score in matched_scores) / max(len(matched_scores), 1)) * 100)
-
-        years = float(cv_profile.total_experience_years or 0)
-        if min_experience_years and min_experience_years > 0:
-            experience_score = _percent((years / min_experience_years) * 100)
-        else:
-            experience_score = _percent(50 + min(years, 5) * 10 if years else 0)
-
-        education_score = 70.0 if cv_profile.education else 45.0
-        if soft_requirements:
-            soft_matches = [skill for skill in soft_requirements if skill in cv_text or _term_tokens(skill) & cv_terms]
-            soft_score = _percent((len(soft_matches) / max(len(soft_requirements), 1)) * 100)
-        else:
-            soft_score = _percent(semantic_score * 0.6 + skills_score * 0.4)
-
-        global_score = _percent(
-            skills_score * weights.get("skills", 0.40)
-            + experience_score * weights.get("experience", 0.30)
-            + education_score * weights.get("education", 0.20)
-            + soft_score * weights.get("soft_skills", 0.10)
+        return (
+            f"Skills: {skills}\n"
+            f"Experience: {experience}\n"
+            f"Education: {education}\n"
+            f"Languages: {languages}\n"
+            f"Summary: {cv_profile.summary}\n"
+            f"Raw CV: {raw_text}"
         )
-
-        recommendation = "strong_match" if global_score >= 75 else "maybe" if global_score >= 50 else "not_recommended"
-        return {
-            "global_score": global_score,
-            "semantic_score": semantic_score,
-            "skills_score": skills_score,
-            "experience_score": experience_score,
-            "education_score": education_score,
-            "soft_skills_score": soft_score,
-            "matched_skills": matched[:20],
-            "missing_skills": missing,
-            "strengths": matched[:5],
-            "gaps": missing[:5],
-            "overall_assessment": f"Recommendation: {recommendation}. Matched {len(matched)} relevant terms.",
-            "interview_recommendation": recommendation,
-        }
-
-    def judge_tied_candidates_with_ollama(
-        self,
-        candidates: list[dict[str, Any]],
-        job_description: str,
-        required_hard_skills: list[str],
-        required_soft_skills: list[str],
-        min_experience_years: float,
-        base_score: float,
-    ) -> dict[str, Any] | None:
-        try:
-            import ollama
-
-            prompt = f"""
-You are resolving a tie between CVs that received the same automatic score.
-Do not create new numeric scores. Judge only who should be ranked first, second, and third inside this tied group, and explain why.
-Base your decision on the job description, required hard skills, required soft skills, and minimum experience.
-
-[BASE SCORE]
-{base_score}
-
-[JOB DESCRIPTION]
-{job_description}
-
-[REQUIRED HARD SKILLS]
-{json.dumps(required_hard_skills, ensure_ascii=False)}
-
-[REQUIRED SOFT SKILLS]
-{json.dumps(required_soft_skills, ensure_ascii=False)}
-
-[MIN EXPERIENCE YEARS]
-{min_experience_years}
-
-[TIED CANDIDATES]
-{json.dumps(candidates, ensure_ascii=False, indent=2)}
-
-Return ONLY valid JSON:
-{{
-  "ranking": [
-    {{"candidate_id": 1, "rank": 1, "reason": "why this candidate is first"}},
-    {{"candidate_id": 2, "rank": 2, "reason": "why this candidate is second"}}
-  ],
-  "summary": "short judgement summary"
-}}
-"""
-            response = ollama.chat(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                format="json",
-                options={"temperature": 0.1},
-            )
-            return json.loads(response["message"]["content"])
-        except Exception:
-            return None
 
 
 scoring_service = ScoringService()

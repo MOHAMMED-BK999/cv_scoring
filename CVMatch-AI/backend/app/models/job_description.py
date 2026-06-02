@@ -16,6 +16,6 @@ class JobDescription(Base):
     required_degree = Column(String(100), nullable=True)
     location = Column(String(255), nullable=True)
     contract_type = Column(String(50), nullable=True)
-    embedding_vector = Column(EmbeddingVector(768), nullable=True)
+    embedding_vector = Column(EmbeddingVector(1024), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

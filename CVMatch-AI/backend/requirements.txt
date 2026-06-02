@@ -21,7 +21,6 @@ Pillow
 
 # AI, LLM & Embeddings
 
-FlagEmbedding>=1.4.0
 sentence-transformers>=2.2.0
 numpy>=2.0.0
 tenacity>=8.2.0

@@ -101,11 +101,11 @@ async def upload_cv(
         # Parsing avec Docling 2.x
         raw_markdown = cv_parser.parse_cv(file_bytes, file.filename)
 
-        # Extraction structurée (Instructor)
+        # Extraction structurée (Ollama/Pydantic)
         cv_profile: CVProfile = await extractor_service.extract_cv(raw_markdown)
 
-        # Embedding: create and store only the dense vector.
-        dense_vector = embedding_service.get_embedding(raw_markdown)
+        # Embedding: create dense vector from structured profile JSON (step 2).
+        dense_vector = embedding_service.get_embedding_from_profile(cv_profile)
 
         # ====================== SAUVEGARDE EN BASE ======================
         
@@ -160,6 +160,7 @@ async def upload_cv(
             required_hard_skills=job.required_hard_skills or [],
             required_soft_skills=job.required_soft_skills or [],
             min_experience_years=job.min_experience_years or 0,
+            required_degree=job.required_degree,
             cv_embedding=dense_vector,
             job_embedding=job.embedding_vector,
         )
