@@ -10,6 +10,7 @@ from app.database import (
     engine,
     ensure_pgvector_extension,
     ensure_vector_indexes,
+    ensure_vector_dimensions,
     is_sqlite,
 )
 from app.models import User
@@ -59,6 +60,7 @@ def initialize_database() -> None:
 
     ensure_pgvector_extension()
     Base.metadata.create_all(bind=engine)
+    ensure_vector_dimensions()
     ensure_vector_indexes()
     _seed_default_user()
 

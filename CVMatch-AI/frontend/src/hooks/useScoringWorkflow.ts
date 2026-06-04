@@ -68,7 +68,6 @@ export const useScoringWorkflow = ({
       // 2. Upload and Parse CVs sequentially
       let processed = 0;
       const total = uploadedCvFiles.length;
-      
       let weights;
       try {
         const stored = localStorage.getItem('scoringWeights');
@@ -88,9 +87,6 @@ export const useScoringWorkflow = ({
       
       // 4. Map to Frontend Candidate Type
       const transformed: Candidate[] = await Promise.all(rankingsData.rankings.map(async (r) => {
-        // Just mock some details for now if we want to save API calls, but we can call getCvScoreDetail if needed.
-        // Doing it to make the UI look populated.
-        
         let details;
         try {
            details = await getCvScoreDetail(r.cv_id ?? r.candidate_id);
@@ -106,17 +102,20 @@ export const useScoringWorkflow = ({
 
         return {
           id: r.candidate_id,
-          name: r.cv_filename.replace('.pdf','').replace('.docx',''),
-          email: r.email || `${r.candidate_id}@example.com`,
-          phone: "0000000000",
-          location: "Location",
+          name: details?.full_name || r.cv_filename.replace('.pdf','').replace('.docx',''),
+          email: details?.email || r.email || `${r.candidate_id}@example.com`,
+          phone: details?.phone || "Non spécifié",
+          location: details?.location || "Non spécifié",
           score,
-          hardSkills: details?.matched_skills?.map((s: string) => ({ name: s, match: true, level: 80 })) || [{name: "Skill", match: true, level: 80}],
+          hardSkills: [
+            ...(details?.matched_skills?.map((s: string) => ({ name: s, match: true, level: 80 })) || []),
+            ...(details?.missing_skills?.map((s: string) => ({ name: s, match: false, level: 0 })) || [])
+          ],
           softSkills: [{ name: "Communication", match: true }],
-          experience: 3, // mock
-          education: "Master",
-          experiences: [],
-          educations: [],
+          experience: details?.total_experience_years || 0,
+          education: details?.educations?.[0]?.degree || "Non spécifié",
+          experiences: details?.experiences || [],
+          educations: details?.educations || [],
           status: 'matched',
           ollamaJudgement: details?.ollama_judgement ?? r.ollama_judgement ?? null,
           matchDetails: {

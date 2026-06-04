@@ -2,7 +2,24 @@ import json
 import os
 
 DEFAULT_SBERT_MODEL = "BAAI/bge-m3"
-VECTOR_SIZE = 1024
+
+# Known model dimensions to avoid loading just to check size
+_MODEL_DIMENSIONS = {
+    "BAAI/bge-m3": 1024,
+    "sentence-transformers/all-MiniLM-L6-v2": 384,
+    "all-MiniLM-L6-v2": 384,
+    "sentence-transformers/all-mpnet-base-v2": 768,
+    "all-mpnet-base-v2": 768,
+}
+
+
+def _get_default_vector_size() -> int:
+    """Determine the vector size from the configured SBERT model."""
+    model_name = os.getenv("SBERT_MODEL", DEFAULT_SBERT_MODEL)
+    return _MODEL_DIMENSIONS.get(model_name, 1024)
+
+
+VECTOR_SIZE = _get_default_vector_size()
 
 
 class EmbeddingService:
@@ -16,7 +33,15 @@ class EmbeddingService:
             from sentence_transformers import SentenceTransformer
 
             self.model = SentenceTransformer(self.model_name)
-            self.vector_size = int(self.model.get_sentence_embedding_dimension() or VECTOR_SIZE)
+            dim = None
+            if hasattr(self.model, 'get_embedding_dimension'):
+                dim = self.model.get_embedding_dimension()
+            elif hasattr(self.model, 'get_sentence_embedding_dimension'):
+                dim = self.model.get_sentence_embedding_dimension()
+            self.vector_size = int(dim or VECTOR_SIZE)
+            # Update module-level VECTOR_SIZE so DB models pick it up
+            import app.core.embedding_engine as _self_module
+            _self_module.VECTOR_SIZE = self.vector_size
         except Exception as exc:
             print(f"WARNING: SBERT model is not available: {exc}")
 

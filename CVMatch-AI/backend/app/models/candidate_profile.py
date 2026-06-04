@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Nume
 from sqlalchemy.sql import func
 from app.database import Base
 from app.db_types import EmbeddingVector
+from app.core.embedding_engine import VECTOR_SIZE
 
 class CandidateProfile(Base):
     __tablename__ = "candidate_profiles"
@@ -15,5 +16,5 @@ class CandidateProfile(Base):
     total_experience_years = Column(Numeric(4, 1), nullable=True)
     raw_text = Column(Text, nullable=True)
     summary_text = Column(Text, nullable=True)
-    embedding_vector = Column(EmbeddingVector(1024), nullable=True)
+    embedding_vector = Column(EmbeddingVector(VECTOR_SIZE), nullable=True)
     extracted_at = Column(DateTime(timezone=True), server_default=func.now())

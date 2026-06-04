@@ -78,8 +78,19 @@ def _compute_skills_score(
     matched: list[str] = []
     missing: list[str] = []
 
+    def clean_skill(name: str) -> str:
+        name = name.strip()
+        if name.endswith(')') and not name.startswith('('):
+            name = name[:-1]
+        if name.startswith('(') and not name.endswith(')'):
+            name = name[1:]
+        return name.strip()
+
     for req in required_hard_skills:
-        req_norm = _normalize(req)
+        req_clean = clean_skill(req)
+        if not req_clean:
+            continue
+        req_norm = _normalize(req_clean)
         found = False
         # Check in extracted skills
         for cv_s in cv_skills:
@@ -91,9 +102,9 @@ def _compute_skills_score(
         if not found and req_norm in combined_text:
             found = True
         if found:
-            matched.append(req)
+            matched.append(req_clean)
         else:
-            missing.append(req)
+            missing.append(req_clean)
 
     score = (len(matched) / len(required_hard_skills)) * 100.0
     return round(score, 2), matched, missing

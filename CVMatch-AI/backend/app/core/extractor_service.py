@@ -49,10 +49,19 @@ def _coerce_profile(data: dict[str, Any], fallback_text: str) -> CVProfile:
     contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
     skills = data.get("skills") if isinstance(data.get("skills"), dict) else {}
     normalized_skills: dict[str, list[dict[str, str]]] = {}
+    
+    def clean_skill(name: str) -> str:
+        name = name.strip()
+        if name.endswith(')') and not name.startswith('('):
+            name = name[:-1]
+        if name.startswith('(') and not name.endswith(')'):
+            name = name[1:]
+        return name.strip()
+
     for category, values in skills.items():
         if isinstance(values, list):
             normalized_skills[category] = [
-                {"name": item.get("name", "") if isinstance(item, dict) else str(item)}
+                {"name": clean_skill(item.get("name", "") if isinstance(item, dict) else str(item))}
                 for item in values
             ]
 
@@ -93,9 +102,19 @@ class ExtractorService:
                     {
                         "role": "system",
                         "content": (
-                            "You are a specialized CV parsing NER system. "
-                            "Return only JSON with: name, contact, education, "
-                            "experience, skills, languages, summary, total_experience_years."
+                            "You are a specialized CV parsing NER system. Return only JSON matching this structure exactly:\n"
+                            "{\n"
+                            "  \"full_name\": \"Candidate Full Name\",\n"
+                            "  \"email\": \"candidate.email@example.com\",\n"
+                            "  \"phone\": \"+1234567890\",\n"
+                            "  \"location\": \"City, Country\",\n"
+                            "  \"education\": [{\"degree\": \"Master in CS\", \"institution\": \"University Name\", \"year\": \"2024\"}],\n"
+                            "  \"experience\": [{\"company\": \"Company A\", \"role\": \"Software Engineer\", \"start\": \"2021\", \"end\": \"2023\", \"description\": [\"Built APIs\", \"Optimized database\"]}],\n"
+                            "  \"skills\": {\"technical\": [{\"name\": \"Python\"}, {\"name\": \"PostgreSQL\"}]},\n"
+                            "  \"languages\": [\"English\", \"French\"],\n"
+                            "  \"summary\": \"Professional summary...\",\n"
+                            "  \"total_experience_years\": 3.5\n"
+                            "}"
                         ),
                     },
                     {"role": "user", "content": f"EXTRACT FROM THIS CV TEXT:\n{text}"},

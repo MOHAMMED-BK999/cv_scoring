@@ -3,6 +3,8 @@ import os
 
 os.environ.setdefault("UPLOAD_DIR", "/kaggle/working/uploads")
 os.environ.setdefault("AUTO_CREATE_TABLES", "1")
+# Use a lighter model on Kaggle (384 dims instead of 1024 for bge-m3)
+os.environ.setdefault("SBERT_MODEL", "all-MiniLM-L6-v2")
 
 
 def load_kaggle_secret(name: str) -> str | None:

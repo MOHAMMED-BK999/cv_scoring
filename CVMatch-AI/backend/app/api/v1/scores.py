@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import ScoringResult, CandidateProfile, CVFile
+from app.models import ScoringResult, CandidateProfile, CVFile, Education, Experience
 
 router = APIRouter()
 
@@ -54,8 +54,15 @@ async def get_cv_score_detail(cv_id: int, db: Session = Depends(get_db)):
     if not scoring:
         raise HTTPException(status_code=404, detail="Score not found for CV")
 
+    educations = db.query(Education).filter(Education.profile_id == profile.id).all()
+    experiences = db.query(Experience).filter(Experience.profile_id == profile.id).all()
+
     return {
         "candidate_id": profile.id,
+        "full_name": profile.full_name,
+        "email": profile.email,
+        "phone": profile.phone,
+        "location": profile.location,
         "global_score": float(scoring.global_score) if scoring.global_score else 0.0,
         "semantic_score": float(scoring.semantic_score) if scoring.semantic_score else 0.0,
         "skills_score": float(scoring.skills_score) if scoring.skills_score else 0.0,
@@ -64,4 +71,18 @@ async def get_cv_score_detail(cv_id: int, db: Session = Depends(get_db)):
         "explanation": scoring.explanation,
         "matched_skills": scoring.matched_skills or [],
         "missing_skills": scoring.missing_skills or [],
+        "educations": [
+            {
+                "degree": edu.degree or "",
+                "school": edu.institution or "",
+                "year": str(edu.graduation_year or "")
+            } for edu in educations
+        ],
+        "experiences": [
+            {
+                "title": exp.job_title or "",
+                "company": exp.company or "",
+                "duration": f"{exp.start_date or ''} - {exp.end_date or ''}".strip(" -") or "N/A"
+            } for exp in experiences
+        ]
     }

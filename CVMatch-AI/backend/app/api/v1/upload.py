@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Form
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import CVFile, CandidateProfile, JobDescription, ScoringResult
+from app.models import CVFile, CandidateProfile, JobDescription, ScoringResult, Education, Experience
 
 # === Services Modernes 2026 ===
 from app.core.cv_parser import CVParser
@@ -116,6 +116,7 @@ async def upload_cv(
             stored_path=str(out_path),
             file_type="pdf" if ext == ".pdf" else "docx",
             file_size_bytes=len(file_bytes),
+
             status="processing"
         )
         db.add(db_cv)
@@ -137,6 +138,38 @@ async def upload_cv(
         db.add(profile)
         db.flush()
         db.refresh(profile)
+
+        # Save extracted Education details
+        for edu in cv_profile.education:
+            try:
+                year_val = None
+                if edu.year:
+                    digits = "".join(c for c in str(edu.year) if c.isdigit())
+                    if digits:
+                        year_val = int(digits[:4])
+                db_edu = Education(
+                    profile_id=profile.id,
+                    degree=edu.degree,
+                    institution=edu.institution,
+                    graduation_year=year_val
+                )
+                db.add(db_edu)
+            except Exception as e:
+                logger.warning(f"Error saving education record: {e}")
+
+        # Save extracted Experience details
+        for exp in cv_profile.experience:
+            try:
+                db_exp = Experience(
+                    profile_id=profile.id,
+                    job_title=exp.role,
+                    company=exp.company,
+                    description="\n".join(exp.description) if isinstance(exp.description, list) else str(exp.description)
+                )
+                db.add(db_exp)
+            except Exception as e:
+                logger.warning(f"Error saving experience record: {e}")
+        db.flush()
 
         # ====================== SCORING ======================
         weights = _normalize_weights(
