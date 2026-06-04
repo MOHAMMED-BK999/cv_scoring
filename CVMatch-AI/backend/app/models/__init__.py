@@ -8,3 +8,4 @@ from .experience import Experience
 from .education import Education
 from .language import Language
 from .scoring_result import ScoringResult
+from .scoring_weights import ScoringWeights

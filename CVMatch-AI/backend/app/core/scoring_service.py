@@ -235,12 +235,28 @@ class ScoringService:
 
         # --- Weighted global score ---
         if weights is None:
-            weights = {
-                "skills": 0.40,
-                "experience": 0.30,
-                "education": 0.20,
-                "soft_skills": 0.10,
-            }
+            # Try to fetch from DB
+            try:
+                from app.database import SessionLocal
+                from app.repositories.scoring_weights import scoring_weights_repo
+                db = SessionLocal()
+                try:
+                    db_weights = scoring_weights_repo.get_weights(db)
+                    weights = {
+                        "skills": db_weights.skills,
+                        "experience": db_weights.experience,
+                        "education": db_weights.education,
+                        "soft_skills": db_weights.soft_skills,
+                    }
+                finally:
+                    db.close()
+            except Exception:
+                weights = {
+                    "skills": 0.40,
+                    "experience": 0.30,
+                    "education": 0.20,
+                    "soft_skills": 0.10,
+                }
 
         # Blend: 40% semantic + 60% weighted sub-scores
         weighted_sub = (

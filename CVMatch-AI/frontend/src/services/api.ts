@@ -102,3 +102,20 @@ export async function getCvScoreDetail(cvId: number): Promise<CvScoreDetailPaylo
   const response = await api.get<CvScoreDetailPayload>(`/api/v1/cvs/${cvId}/score`);
   return response.data;
 }
+
+export interface ScoringWeightsPayload {
+  skills: number;
+  experience: number;
+  education: number;
+  soft_skills: number;
+}
+
+export async function getScoringSettings(): Promise<ScoringWeightsPayload> {
+  const response = await api.get<ScoringWeightsPayload>('/api/v1/settings/scoring');
+  return response.data;
+}
+
+export async function updateScoringSettings(payload: ScoringWeightsPayload): Promise<ScoringWeightsPayload> {
+  const response = await api.post<ScoringWeightsPayload>('/api/v1/settings/scoring', payload);
+  return response.data;
+}
