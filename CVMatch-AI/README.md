@@ -176,14 +176,6 @@ npm run backend:test     # Exécuter les tests
 
 ---
 
-## 🔐 Authentification et Sécurité
-
-- Authentification via **Firebase** (frontend)
-- Tokens JWT pour l'API (backend)
-- Mots de passe hashés avec **bcrypt**
-- Variables d'environnement pour les clés sensibles
-
----
 
 ## 📈 Déploiement
 
